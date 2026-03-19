@@ -1,0 +1,27 @@
+# Core
+numpy>=1.21
+pandas>=1.3
+torch>=1.12
+torchvision>=0.13
+opencv-python>=4.5
+tqdm>=4.60
+
+# Audio
+librosa>=0.9
+
+# Face/emotion
+deepface>=0.0.75
+
+# Narrative
+sentence-transformers>=2.2
+
+# Transcription (Phase 1)
+openai-whisper
+
+# CLIP (install separately):
+# pip install git+https://github.com/openai/CLIP.git
+
+# Development / inspection
+jupyter
+matplotlib>=3.4
+seaborn>=0.11

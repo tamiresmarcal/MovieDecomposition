@@ -123,3 +123,70 @@ CNN_INPUT_SIZE = 224            # ResNet/CLIP standard input resolution
 # ImageNet normalisation constants (mean/std per RGB channel)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD  = [0.229, 0.224, 0.225]
+
+
+# ── Feature vector output (NEW) ───────────────────────────────────────────────
+#
+# Raw per-second feature matrix: all 12 channels concatenated in fixed order.
+# This is the stimulus representation BEFORE Bayesian compression (EMA + KL).
+# Intended use: voxelwise encoding models (e.g. ridge regression against BOLD).
+#
+# Changing FEATURE_CHANNEL_ORDER breaks compatibility with saved .npy files.
+# If CLIP_MODEL is changed to ViT-L/14, update FEATURE_DIMS["semantic"] to 768.
+
+FEATURE_CHANNEL_ORDER = [
+    "L1", "L2", "L3", "L4",                       # visual hierarchy (ResNet-50)
+    "semantic",                                     # high-level scene semantics (CLIP)
+    "emotion", "faces",                             # face modality (DeepFace)
+    "motion",                                       # optical flow histogram
+    "audio_mel", "audio_spec", "audio_onset",       # audio hierarchy (librosa)
+    "narrative",                                    # sentence embedding (sentence-transformers)
+]
+
+# Expected dimensionality per channel (ViT-B/32 config).
+# Used for validation and for zero-filling missing channels (e.g. no transcript).
+FEATURE_DIMS = {
+    "L1":           256,    # ResNet layer1 GAP
+    "L2":           512,    # ResNet layer2 GAP
+    "L3":           1024,   # ResNet layer3 GAP
+    "L4":           2048,   # ResNet layer4 GAP
+    "semantic":     512,    # CLIP ViT-B/32 image embedding
+    "emotion":      7,      # 7 emotion probabilities (coverage-weighted)
+    "faces":        3,      # n_faces_mean, n_faces_std, face_coverage_std
+    "motion":       19,     # 16 mag bins + mean_mag + mean_sin + mean_cos
+    "audio_mel":    128,    # mean log mel-spectrogram (128 mel bands)
+    "audio_spec":   6,      # centroid/rolloff/rms mean+std
+    "audio_onset":  1,      # max onset strength in 1s window
+    "narrative":    384,    # sentence-transformers embedding dim
+}
+
+FEATURE_TOTAL_DIM = sum(FEATURE_DIMS[ch] for ch in FEATURE_CHANNEL_ORDER)  # 4900
+
+
+def feature_column_names() -> list:
+    """
+    Generate 4900 named columns for the raw feature DataFrame.
+
+    Format: '{channel}_{dim_index:04d}'
+        e.g. L1_0000, L1_0001, ..., L1_0255,
+             L2_0000, ..., L4_2047,
+             semantic_0000, ..., narrative_0383
+
+    Design choices:
+        - Channel prefix enables modality-level slicing:
+              df.filter(like='L4_')  → all 2048 IT cortex features
+              df.filter(like='audio_mel_')  → all 128 mel bands
+        - 4-digit zero-padded suffix because the largest channel (L4)
+          has 2048 dims; 3 digits would mis-sort at 1000.
+        - Last-underscore split recovers (channel, index) unambiguously:
+              name.rsplit('_', 1) → ('audio_mel', '0003')
+        - Lexicographic sort preserves concatenation order within a channel.
+
+    Returns:
+        List of 4900 strings.
+    """
+    names = []
+    for ch in FEATURE_CHANNEL_ORDER:
+        d = FEATURE_DIMS[ch]
+        names.extend(f"{ch}_{i:04d}" for i in range(d))
+    return names
